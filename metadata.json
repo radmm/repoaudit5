@@ -1,0 +1,6 @@
+{
+  "name": "Repo Auditor",
+  "description": "Audits public GitHub repositories for security vulnerabilities and code plagiarism with language-agnostic token-based winnowing analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

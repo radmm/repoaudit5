@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Syne', sans-serif;
+    --font-body: 'General Sans', 'Space Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'Martian Mono', monospace;
+    --color-base: #F2EFE9;
+    --color-zebra: #E8E4DA;
+    --color-ink: #0D0D0D;
+    --color-lime: #D7FF3E;
+    --color-cobalt: #2B4BF2;
+    --color-coral: #FF5A36;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-base);
+    color: var(--color-ink);
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Brutalist Utility Classes */
+.brutal-border {
+  border: 3px solid #0D0D0D;
+}
+
+.brutal-border-sm {
+  border: 2px solid #0D0D0D;
+}
+
+.brutal-shadow-hero {
+  box-shadow: 6px 6px 0px #0D0D0D;
+}
+
+.brutal-shadow {
+  box-shadow: 3px 3px 0px #0D0D0D;
+}
+
+.brutal-shadow-sm {
+  box-shadow: 2px 2px 0px #0D0D0D;
+}
+
+.brutal-btn-active:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #0D0D0D;
+}
+
+/* Scrollbars for neobrutalist aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F2EFE9;
+  border-left: 2px solid #0D0D0D;
+}
+::-webkit-scrollbar-thumb {
+  background: #0D0D0D;
+}
