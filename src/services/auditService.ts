@@ -14,16 +14,16 @@ import { PlagiarismScanner } from './plagiarismScanner';
 import { RepoIngestionService, PRESET_REPOSITORIES } from './repoIngestion';
 
 const STORAGE_KEY = 'repo_auditor_history_v3';
-const USER_KEY = 'repo_auditor_user_v3';
+const USER_KEY = 'repo_auditor_user_v4';
 const API_KEYS_KEY = 'repo_auditor_api_keys_v3';
-const ORG_KEY = 'repo_auditor_org_v3';
+const ORG_KEY = 'repo_auditor_org_v4';
 const WAITLIST_KEY = 'repo_auditor_waitlist_v3';
 
 const DEFAULT_USER: UserProfile = {
   id: 'usr-gh-98421',
-  githubId: 'octocat',
-  username: 'octocat',
-  email: 'octocat@github.com',
+  githubId: 'devishwas5',
+  username: 'devishwas5',
+  email: 'devishwas5@gmail.com',
   avatarUrl: 'https://avatars.githubusercontent.com/u/583231?v=4',
   githubAppInstalled: true,
   auditsCount: 14,
@@ -52,25 +52,11 @@ const DEFAULT_ORG: Organization = {
   name: 'Acme Engineering',
   members: [
     {
-      id: 'usr-1',
-      username: 'octocat',
-      email: 'octocat@github.com',
+      id: 'usr-owner',
+      username: 'devishwas5',
+      email: 'devishwas5@gmail.com',
       role: 'owner',
       avatarUrl: 'https://avatars.githubusercontent.com/u/583231?v=4',
-    },
-    {
-      id: 'usr-2',
-      username: 'sarah-dev',
-      email: 'sarah@acme.corp',
-      role: 'admin',
-      avatarUrl: 'https://avatars.githubusercontent.com/u/1024025?v=4',
-    },
-    {
-      id: 'usr-3',
-      username: 'alex-sec',
-      email: 'alex@acme.corp',
-      role: 'member',
-      avatarUrl: 'https://avatars.githubusercontent.com/u/2048050?v=4',
     },
   ],
 };
@@ -718,25 +704,84 @@ export class AuditService {
   // --- Organization Management ---
 
   public getOrg(): Organization {
+    const currentUser = this.getUser();
     try {
       const stored = localStorage.getItem(ORG_KEY);
-      return stored ? JSON.parse(stored) : DEFAULT_ORG;
-    } catch {
-      return DEFAULT_ORG;
-    }
+      if (stored) {
+        const parsed: Organization = JSON.parse(stored);
+        // Clean out any legacy seed/placeholder octocat rows
+        parsed.members = (parsed.members || []).filter(
+          (m) => !(m.username.toLowerCase() === 'octocat' && m.email === 'octocat@github.com')
+        );
+
+        // Ensure owner matches the currently logged-in user
+        if (parsed.members.length === 0) {
+          parsed.members.push({
+            id: currentUser.id || 'usr-owner',
+            username: currentUser.username,
+            email: currentUser.email,
+            role: 'owner',
+            avatarUrl: currentUser.avatarUrl,
+          });
+        } else {
+          // Sync owner row with active user profile
+          const ownerIndex = parsed.members.findIndex((m) => m.role === 'owner');
+          if (ownerIndex >= 0) {
+            parsed.members[ownerIndex].username = currentUser.username;
+            parsed.members[ownerIndex].email = currentUser.email;
+            parsed.members[ownerIndex].avatarUrl = currentUser.avatarUrl;
+          }
+        }
+        return parsed;
+      }
+    } catch {}
+
+    return {
+      id: 'org-acme-eng',
+      name: 'Acme Engineering',
+      members: [
+        {
+          id: currentUser.id || 'usr-owner',
+          username: currentUser.username,
+          email: currentUser.email,
+          role: 'owner',
+          avatarUrl: currentUser.avatarUrl,
+        },
+      ],
+    };
   }
 
-  public inviteOrgMember(email: string, role: 'admin' | 'member'): void {
+  public inviteOrgMember(identifier: string, role: 'admin' | 'member'): void {
     const org = this.getOrg();
-    const username = email.split('@')[0];
+    const cleanId = identifier.trim().replace(/^@/, '');
+    const isEmail = cleanId.includes('@');
+    const username = isEmail ? cleanId.split('@')[0] : cleanId;
+    const email = isEmail ? cleanId : `${username}@users.noreply.github.com`;
+
     const newMember = {
       id: `usr-${Date.now().toString(36)}`,
       username,
       email,
       role,
-      avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${username}`,
+      avatarUrl: `https://github.com/${username}.png`,
     };
-    org.members.push(newMember);
+
+    // Prevent duplicate entries
+    const existingIndex = org.members.findIndex((m) => m.username.toLowerCase() === username.toLowerCase());
+    if (existingIndex >= 0) {
+      org.members[existingIndex].role = role;
+    } else {
+      org.members.push(newMember);
+    }
+
+    try {
+      localStorage.setItem(ORG_KEY, JSON.stringify(org));
+    } catch {}
+  }
+
+  public removeOrgMember(memberId: string): void {
+    const org = this.getOrg();
+    org.members = org.members.filter((m) => m.id !== memberId);
     try {
       localStorage.setItem(ORG_KEY, JSON.stringify(org));
     } catch {}

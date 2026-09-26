@@ -18,9 +18,9 @@ const TONE_BG: Record<ChipTone, string> = {
 };
 
 const SIZE_CLASSES = {
-  sm: 'w-7 h-7 text-xs shadow-[2px_2px_0px_#0D0D0D]',
-  md: 'w-10 h-10 text-sm shadow-[3px_3px_0px_#0D0D0D]',
-  lg: 'w-12 h-12 text-base shadow-[4px_4px_0px_#0D0D0D]',
+  sm: 'w-8 h-8 min-w-[32px] min-h-[32px] max-w-[32px] max-h-[32px] shadow-[2px_2px_0px_#0D0D0D]',
+  md: 'w-11 h-11 min-w-[44px] min-h-[44px] max-w-[44px] max-h-[44px] shadow-[3px_3px_0px_#0D0D0D]',
+  lg: 'w-14 h-14 min-w-[56px] min-h-[56px] max-w-[56px] max-h-[56px] shadow-[4px_4px_0px_#0D0D0D]',
 };
 
 export const IconChip: React.FC<IconChipProps> = ({
@@ -31,10 +31,12 @@ export const IconChip: React.FC<IconChipProps> = ({
 }) => {
   return (
     <div
-      className={`inline-flex items-center justify-center shrink-0 border-2 border-[#0D0D0D] transition-transform ${SIZE_CLASSES[size]} ${TONE_BG[tone]} ${className}`}
+      className={`box-border aspect-square inline-flex items-center justify-center shrink-0 border-[3px] border-[#0D0D0D] p-2 transition-transform ${SIZE_CLASSES[size]} ${TONE_BG[tone]} ${className}`}
       style={{ borderRadius: '0px' }}
     >
-      {icon}
+      <div className="flex items-center justify-center w-full h-full shrink-0">
+        {icon}
+      </div>
     </div>
   );
 };

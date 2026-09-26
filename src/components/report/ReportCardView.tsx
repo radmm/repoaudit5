@@ -324,20 +324,26 @@ export const ReportCardView: React.FC<ReportCardViewProps> = ({
                         className="cursor-pointer flex flex-col sm:grid sm:grid-cols-12 gap-2 items-start sm:items-center"
                         onClick={() => setExpandedFinding(isExpanded ? null : finding.id)}
                       >
-                        {/* Severity Chip with Color + Icon + Text redundancy */}
+                        {/* Severity Chip with Fixed Square + 3px Border + Centered Icon + Text redundancy */}
                         <div className="sm:col-span-2 flex items-center justify-between w-full sm:w-auto">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold uppercase border border-[#0D0D0D] ${
-                              finding.severity === 'critical'
-                                ? 'bg-[#FF5A36] text-white'
-                                : finding.severity === 'high'
-                                ? 'bg-[#FF5A36]/20 text-[#0D0D0D]'
-                                : 'bg-[#2B4BF2]/20 text-[#0D0D0D]'
-                            }`}
-                          >
-                            <span>{finding.severity === 'critical' ? '▲' : '●'}</span>
-                            <span>{finding.severity}</span>
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-7 h-7 min-w-[28px] min-h-[28px] max-w-[28px] max-h-[28px] box-border aspect-square border-[3px] border-[#0D0D0D] flex items-center justify-center p-1 shrink-0 font-bold text-xs ${
+                                finding.severity === 'critical'
+                                  ? 'bg-[#FF5A36] text-white shadow-[2px_2px_0px_#0D0D0D]'
+                                  : finding.severity === 'high'
+                                  ? 'bg-[#FF5A36]/25 text-[#0D0D0D] shadow-[2px_2px_0px_#0D0D0D]'
+                                  : 'bg-[#2B4BF2]/20 text-[#0D0D0D] shadow-[2px_2px_0px_#0D0D0D]'
+                              }`}
+                              style={{ borderRadius: '0px' }}
+                              title={`Severity: ${finding.severity}`}
+                            >
+                              <span>{finding.severity === 'critical' ? '▲' : finding.severity === 'high' ? '◆' : '●'}</span>
+                            </div>
+                            <span className="font-mono font-bold text-[11px] uppercase tracking-wider text-[#0D0D0D]">
+                              {finding.severity}
+                            </span>
+                          </div>
 
                           <span className="sm:hidden font-mono text-[10px] text-[#0D0D0D]/60">
                             Line {finding.line}

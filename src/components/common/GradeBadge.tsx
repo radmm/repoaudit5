@@ -8,10 +8,10 @@ interface GradeBadgeProps {
 }
 
 const SIZE_MAP = {
-  sm: 'w-7 h-7 text-xs border-2 shadow-[2px_2px_0px_#0D0D0D]',
-  md: 'w-10 h-10 text-sm border-2 shadow-[3px_3px_0px_#0D0D0D]',
-  lg: 'w-14 h-14 text-2xl border-[3px] shadow-[4px_4px_0px_#0D0D0D]',
-  xl: 'w-20 h-20 text-4xl border-[3px] shadow-[6px_6px_0px_#0D0D0D]',
+  sm: 'w-8 h-8 min-w-[32px] min-h-[32px] max-w-[32px] max-h-[32px] text-xs shadow-[2px_2px_0px_#0D0D0D]',
+  md: 'w-11 h-11 min-w-[44px] min-h-[44px] max-w-[44px] max-h-[44px] text-base shadow-[3px_3px_0px_#0D0D0D]',
+  lg: 'w-16 h-16 min-w-[64px] min-h-[64px] max-w-[64px] max-h-[64px] text-3xl shadow-[4px_4px_0px_#0D0D0D]',
+  xl: 'w-20 h-20 min-w-[80px] min-h-[80px] max-w-[80px] max-h-[80px] text-4xl shadow-[6px_6px_0px_#0D0D0D]',
 };
 
 export const GradeBadge: React.FC<GradeBadgeProps> = ({
@@ -48,10 +48,10 @@ export const GradeBadge: React.FC<GradeBadgeProps> = ({
   return (
     <div className="inline-flex items-center gap-2">
       <div
-        className={`inline-flex items-center justify-center font-mono font-extrabold border-[#0D0D0D] shrink-0 ${SIZE_MAP[size]} ${bg}`}
+        className={`box-border aspect-square inline-flex items-center justify-center font-mono font-extrabold border-[3px] border-[#0D0D0D] p-1 shrink-0 ${SIZE_MAP[size]} ${bg}`}
         style={{ borderRadius: '0px' }}
       >
-        <span>{grade}</span>
+        <span className="flex items-center justify-center leading-none select-none">{grade}</span>
       </div>
       {showLabel && (
         <span className="font-mono text-xs uppercase tracking-wider font-bold text-[#0D0D0D] flex items-center gap-1.5">

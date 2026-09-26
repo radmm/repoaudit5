@@ -451,7 +451,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           <span className="font-bold uppercase text-[#0D0D0D] block mb-2">Product</span>
           <ul className="space-y-1 text-[#0D0D0D]/70">
             <li><button onClick={() => onNavigateToTab('scan')} className="hover:underline cursor-pointer">Run Audit</button></li>
-            <li><button onClick={() => onNavigateToTab('compare')} className="hover:underline cursor-pointer">Pairwise Plagiarism</button></li>
+            <li><button onClick={() => onStartAudit('https://github.com/student-submissions/lab3-bst-original', 'https://github.com/student-forks/lab3-bst-renamed')} className="hover:underline cursor-pointer">Pairwise Plagiarism</button></li>
             <li><button onClick={() => onNavigateToTab('corpus')} className="hover:underline cursor-pointer">Accuracy Validation</button></li>
             <li><button onClick={() => onNavigateToTab('dashboard')} className="hover:underline cursor-pointer">Dashboard Trends</button></li>
           </ul>
