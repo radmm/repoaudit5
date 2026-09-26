@@ -30,8 +30,10 @@ export const ScanView: React.FC<ScanViewProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [progressPercent, setProgressPercent] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSelectPreset = (preset: PresetRepo) => {
+    setErrorMessage(null);
     setRepoUrl(preset.url);
     if (preset.compareFiles) {
       setIsPairwiseMode(true);
@@ -46,6 +48,7 @@ export const ScanView: React.FC<ScanViewProps> = ({
     if (e) e.preventDefault();
     if (!repoUrl.trim()) return;
 
+    setErrorMessage(null);
     setIsScanning(true);
     setProgressPercent(15);
     setProgressMsg('Cloning repository...');
@@ -65,7 +68,7 @@ export const ScanView: React.FC<ScanViewProps> = ({
         onAuditComplete(report);
       }, 400);
     } catch (err: any) {
-      alert(err.message || 'Audit failed. Check the repository URL.');
+      setErrorMessage(err.message || 'Audit failed. Check the repository URL.');
       setIsScanning(false);
     }
   };
@@ -176,6 +179,20 @@ export const ScanView: React.FC<ScanViewProps> = ({
                 className="w-full px-3 py-2 bg-white border-2 border-[#0D0D0D] text-[#0D0D0D] font-mono text-xs focus:outline-none"
                 style={{ borderRadius: '0px' }}
               />
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-3 bg-[#FF5A36]/10 border-2 border-[#FF5A36] text-[#0D0D0D] font-mono text-xs flex items-center justify-between">
+              <span className="font-bold">Error: {errorMessage}</span>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="px-2 py-0.5 border border-[#0D0D0D] bg-white text-[10px] uppercase font-bold cursor-pointer"
+              >
+                Dismiss
+              </button>
             </div>
           )}
 

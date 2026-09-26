@@ -3,6 +3,7 @@ export type SecurityGrade = 'A' | 'B' | 'C' | 'D' | 'F';
 
 export interface SecurityFinding {
   id: string;
+  patternId: string;
   file: string;
   line: number;
   issue: string;
@@ -10,6 +11,8 @@ export interface SecurityFinding {
   category: 'hardcoded_secret' | 'sql_injection' | 'weak_hash' | 'input_validation' | 'insecure_dependency' | 'code_execution';
   snippet?: string;
   remediation: string;
+  explanation?: string;
+  suggestedDiff?: string;
 }
 
 export interface PlagiarismMatch {
@@ -36,6 +39,8 @@ export interface AuditReport {
   id: string;
   repoUrl: string;
   compareRepoUrl?: string;
+  commitSha: string;
+  isCached?: boolean;
   timestamp: string;
   summary: {
     totalFiles: number;
@@ -58,6 +63,7 @@ export interface AuditReport {
   };
   plagiarism: {
     similarity: number; // 0 - 100
+    mode: 'pairwise' | 'corpus';
     matches: PlagiarismMatch[];
     fingerprintCount: number;
     algorithm: string;
@@ -81,11 +87,73 @@ export interface AuditHistoryItem {
   id: string;
   repoUrl: string;
   compareRepoUrl?: string;
+  commitSha: string;
   timestamp: string;
   securityGrade: SecurityGrade;
   securityScore: number;
   plagiarismScore: number;
+  plagiarismMode: 'pairwise' | 'corpus';
   findingsCount: number;
   matchesCount: number;
   totalFiles: number;
+}
+
+export type JobStatus = 'queued' | 'cloning' | 'scanning' | 'aggregating' | 'done' | 'failed';
+
+export interface AuditJob {
+  id: string;
+  repoUrl: string;
+  compareRepoUrl?: string;
+  status: JobStatus;
+  progressMessage: string;
+  progressPercent: number;
+  failureReason?: string;
+  result?: AuditReport;
+  createdAt: string;
+}
+
+export interface UserProfile {
+  id: string;
+  githubId: string;
+  username: string;
+  email: string;
+  avatarUrl: string;
+  githubAppInstalled: boolean;
+  auditsCount: number;
+  quotaLimit: number;
+}
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+export interface OrgMember {
+  id: string;
+  username: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  avatarUrl: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  members: OrgMember[];
+}
+
+export interface TestCorpusItem {
+  id: string;
+  name: string;
+  category: 'security_true_positive' | 'plagiarism_copy' | 'clean_control';
+  repoUrl: string;
+  expectedOutcome: string;
+  actualOutcome: string;
+  status: 'passed' | 'failed';
+  precision: number;
+  recall: number;
 }

@@ -164,6 +164,7 @@ export class PlagiarismScanner {
     referenceFiles?: ScannedFile[]
   ): {
     similarity: number;
+    mode: 'pairwise' | 'corpus';
     matches: PlagiarismMatch[];
     fingerprintCount: number;
     algorithm: string;
@@ -174,6 +175,8 @@ export class PlagiarismScanner {
       kgramSize: number;
     };
   } {
+    const isPairwise = Boolean(referenceFiles && referenceFiles.length > 0);
+    const mode: 'pairwise' | 'corpus' = isPairwise ? 'pairwise' : 'corpus';
     // 1. Generate target fingerprints
     const targetFingerprintsMap = new Map<string, Fingerprint[]>();
     const allTargetHashes = new Set<number>();
@@ -275,6 +278,7 @@ export class PlagiarismScanner {
 
     return {
       similarity,
+      mode,
       matches: matches.sort((a, b) => b.confidence - a.confidence),
       fingerprintCount: totalTargetFps,
       algorithm: 'Winnowing (MOSS-compatible Sliding Window K-gram Hash)',

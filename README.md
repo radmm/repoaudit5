@@ -51,6 +51,14 @@ npm run dev
 ```
 The application will launch on `http://localhost:3000` (or `http://localhost:5173`) with the interactive dashboard, mobile phone-frame mockup toggle, and real-time scanner simulation.
 
+### Vercel / Cloud Deployment
+The repository includes a ready-to-use `vercel.json` and `.npmrc` (`legacy-peer-deps=true`).
+To deploy to Vercel:
+```bash
+npm run build
+```
+Vercel will automatically run `npm install --legacy-peer-deps` and deploy the output directory `dist/`.
+
 ### 2. Run the Java 17 + Spring Boot Backend (Optional / Standalone)
 Inside the `/backend` folder:
 ```bash

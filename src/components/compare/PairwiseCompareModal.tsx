@@ -21,9 +21,11 @@ export const PairwiseCompareModal: React.FC<PairwiseCompareModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [lastCompareResult, setLastCompareResult] = useState<AuditReport | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleRunPairwise = async () => {
     if (!repoA || !repoB) return;
+    setErrorMessage(null);
     setIsLoading(true);
     setStatusMessage('Scanning...');
 
@@ -34,7 +36,7 @@ export const PairwiseCompareModal: React.FC<PairwiseCompareModalProps> = ({
       setLastCompareResult(report);
       onAuditComplete(report);
     } catch (e: any) {
-      alert(e.message || 'Comparison failed');
+      setErrorMessage(e.message || 'Comparison failed');
     } finally {
       setIsLoading(false);
     }
@@ -102,6 +104,20 @@ export const PairwiseCompareModal: React.FC<PairwiseCompareModalProps> = ({
           />
         </BrutalistCard>
       </div>
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="p-3 bg-[#FF5A36]/10 border-2 border-[#FF5A36] text-[#0D0D0D] font-mono text-xs flex items-center justify-between">
+          <span className="font-bold">Error: {errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="px-2 py-0.5 border border-[#0D0D0D] bg-white text-[10px] uppercase font-bold cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Action Row */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white border-[3px] border-[#0D0D0D] shadow-[3px_3px_0px_#0D0D0D]">
