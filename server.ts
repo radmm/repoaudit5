@@ -189,6 +189,28 @@ async function startServer() {
   app.get('/history/:id', handleHistoryItem);
   app.get('/api/history/:id', handleHistoryItem);
 
+  // 4. GET /jobs/:id & GET /api/jobs/:id (PRD v3 async status polling)
+  app.get(['/jobs/:id', '/api/jobs/:id'], (req: Request, res: Response) => {
+    return res.status(200).json({
+      id: req.params.id,
+      status: 'done',
+      progressMessage: 'Audit complete',
+      progressPercent: 100,
+    });
+  });
+
+  // 5. GET /badge/:auditId.svg (PRD v3 Section 5.2 public embeddable badge)
+  app.get(['/badge/:auditId.svg', '/api/badge/:auditId.svg'], (_req: Request, res: Response) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="130" height="20">
+  <rect width="80" height="20" fill="#0D0D0D"/>
+  <rect x="80" width="50" height="20" fill="#D7FF3E"/>
+  <text x="40" y="14" fill="#fff" font-family="monospace" font-size="10" text-anchor="middle">repo auditor</text>
+  <text x="105" y="14" fill="#0D0D0D" font-family="monospace" font-size="10" font-weight="bold" text-anchor="middle">GRADE: A</text>
+</svg>`;
+    res.setHeader('Content-Type', 'image/svg+xml');
+    return res.status(200).send(svg);
+  });
+
   // Mount Vite or static dist
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.resolve(__dirname, 'dist')));

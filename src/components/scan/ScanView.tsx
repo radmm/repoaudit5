@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrutalistCard } from '../common/GlassCard';
 import {
   ShieldMark,
@@ -6,34 +6,48 @@ import {
   RepoCloneMark,
   CompareMark,
   PlayMark,
-  IconChip,
   ArrowRightMark,
+  CheckMark,
 } from '../common/BrutalistIcon';
 import { PRESET_REPOSITORIES, PresetRepo } from '../../services/repoIngestion';
 import { auditService } from '../../services/auditService';
-import { AuditReport } from '../../types/audit';
+import { AuditReport, AuditJob, JobStatus } from '../../types/audit';
 
 interface ScanViewProps {
   onAuditComplete: (report: AuditReport) => void;
   initialPresetId?: string;
+  initialRepoUrl?: string;
+  initialCompareUrl?: string;
 }
 
 export const ScanView: React.FC<ScanViewProps> = ({
   onAuditComplete,
   initialPresetId,
+  initialRepoUrl,
+  initialCompareUrl,
 }) => {
   const [repoUrl, setRepoUrl] = useState(
-    'https://github.com/acme-corp/vulnerable-payment-gateway'
+    initialRepoUrl || 'https://github.com/acme-corp/vulnerable-payment-gateway'
   );
-  const [compareRepoUrl, setCompareRepoUrl] = useState('');
-  const [isPairwiseMode, setIsPairwiseMode] = useState(false);
+  const [compareRepoUrl, setCompareRepoUrl] = useState(initialCompareUrl || '');
+  const [isPairwiseMode, setIsPairwiseMode] = useState(Boolean(initialCompareUrl));
+  const [forceRescan, setForceRescan] = useState(false);
+
+  // Async Job State per Section 4.6 & 4.7
+  const [currentJob, setCurrentJob] = useState<AuditJob | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [progressMsg, setProgressMsg] = useState('');
-  const [progressPercent, setProgressPercent] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialPresetId) {
+      const preset = PRESET_REPOSITORIES.find((p) => p.id === initialPresetId);
+      if (preset) {
+        handleSelectPreset(preset);
+      }
+    }
+  }, [initialPresetId]);
 
   const handleSelectPreset = (preset: PresetRepo) => {
-    setErrorMessage(null);
+    setCurrentJob(null);
     setRepoUrl(preset.url);
     if (preset.compareFiles) {
       setIsPairwiseMode(true);
@@ -48,93 +62,87 @@ export const ScanView: React.FC<ScanViewProps> = ({
     if (e) e.preventDefault();
     if (!repoUrl.trim()) return;
 
-    setErrorMessage(null);
     setIsScanning(true);
-    setProgressPercent(15);
-    setProgressMsg('Cloning repository...');
+    // Enqueue async job
+    const job = auditService.enqueueJob(
+      repoUrl.trim(),
+      isPairwiseMode && compareRepoUrl.trim() ? compareRepoUrl.trim() : undefined,
+      forceRescan
+    );
+    setCurrentJob(job);
 
-    try {
-      const report = await auditService.runAudit(
-        repoUrl.trim(),
-        isPairwiseMode && compareRepoUrl.trim() ? compareRepoUrl.trim() : undefined,
-        (msg, pct) => {
-          setProgressMsg(msg);
-          setProgressPercent(pct);
-        }
-      );
-
-      setTimeout(() => {
+    // Poll live status until completion or failure
+    const pollInterval = setInterval(() => {
+      const live = auditService.getJob(job.id);
+      if (!live) {
+        clearInterval(pollInterval);
         setIsScanning(false);
-        onAuditComplete(report);
-      }, 400);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Audit failed. Check the repository URL.');
-      setIsScanning(false);
+        return;
+      }
+      setCurrentJob({ ...live });
+
+      if (live.status === 'done' && live.result) {
+        clearInterval(pollInterval);
+        setIsScanning(false);
+        setTimeout(() => {
+          onAuditComplete(live.result!);
+        }, 500);
+      } else if (live.status === 'failed') {
+        clearInterval(pollInterval);
+        setIsScanning(false);
+      }
+    }, 150);
+  };
+
+  const getStepStatus = (step: JobStatus) => {
+    if (!currentJob) return 'waiting';
+    const sequence: JobStatus[] = ['queued', 'cloning', 'scanning', 'aggregating', 'done'];
+    const currentIdx = sequence.indexOf(currentJob.status);
+    const stepIdx = sequence.indexOf(step);
+
+    if (currentJob.status === 'failed') {
+      return currentIdx === stepIdx ? 'failed' : currentIdx > stepIdx ? 'completed' : 'waiting';
     }
+    if (currentIdx > stepIdx) return 'completed';
+    if (currentIdx === stepIdx) return 'active';
+    return 'waiting';
   };
 
   return (
     <div className="space-y-6">
-      {/* Hero Section: Asymmetric grid with controlled tilt */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Headline & Pitch (7 cols) */}
-        <div className="lg:col-span-8">
-          <BrutalistCard hero bg="white" className="relative overflow-visible">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-mono text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-[#D7FF3E] border-2 border-[#0D0D0D]">
+      {/* 1. Specifications & Engine Banner */}
+      <BrutalistCard bg="white" className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-mono text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-[#D7FF3E] border border-[#0D0D0D]">
                 DUAL-ENGINE SCANNER
               </span>
               <span className="font-mono text-xs text-[#0D0D0D]/60">
-                JAVA 17 / JGIT / WINNOWING
+                ASYNC WORKER • SHADOW EXECUTION
               </span>
             </div>
-
-            {/* Oversized wide headline breaking out */}
-            <h1 className="font-display font-extrabold text-3xl sm:text-5xl md:text-6xl uppercase tracking-tighter text-[#0D0D0D] leading-[0.9] -mr-2">
-              AUDIT ANY REPOSITORY.
+            <h1 className="font-display font-extrabold text-2xl sm:text-3xl uppercase text-[#0D0D0D]">
+              AUDIT REPOSITORY
             </h1>
+          </div>
 
-            <p className="mt-4 text-[#0D0D0D]/80 font-sans text-sm sm:text-base max-w-xl leading-relaxed">
-              Computes a static security grade (A–F) and a language-agnostic code originality score (0–100%) in parallel using tokenized winnowing fingerprint hashes.
-            </p>
-          </BrutalistCard>
+          <div className="flex items-center gap-2 font-mono text-xs">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={forceRescan}
+                onChange={(e) => setForceRescan(e.target.checked)}
+                className="w-4 h-4 border border-[#0D0D0D] accent-[#0D0D0D]"
+              />
+              <span className="text-[#0D0D0D]/80">Bypass SHA Cache</span>
+            </label>
+          </div>
         </div>
+      </BrutalistCard>
 
-        {/* Right Feature Card with subtle deliberate rotation (4 cols) */}
-        <div className="lg:col-span-4">
-          <BrutalistCard
-            rotate="1.5deg"
-            bg="paper"
-            className="hover:rotate-0 transition-transform"
-          >
-            <div className="flex items-center justify-between pb-2 border-b-2 border-[#0D0D0D] mb-3">
-              <span className="font-mono text-xs font-bold uppercase">Specifications</span>
-              <span className="w-3 h-3 bg-[#D7FF3E] border border-[#0D0D0D]" />
-            </div>
-            <div className="space-y-2 font-mono text-xs">
-              <div className="flex justify-between">
-                <span className="text-[#0D0D0D]/70">Security:</span>
-                <span className="font-bold">Regex + CVEs</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#0D0D0D]/70">Plagiarism:</span>
-                <span className="font-bold">k=6, w=4 MOSS</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#0D0D0D]/70">Concurrency:</span>
-                <span className="font-bold">CompletableFuture</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#0D0D0D]/70">Persistence:</span>
-                <span className="font-bold">JDBC Schema</span>
-              </div>
-            </div>
-          </BrutalistCard>
-        </div>
-      </div>
-
-      {/* Primary Input Container */}
-      <BrutalistCard hero bg="white">
+      {/* 2. Main Audit Form Input */}
+      <BrutalistCard bg="white" className="p-4 sm:p-6 space-y-4">
         <form onSubmit={handleStartAudit} className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <label className="font-mono text-xs font-bold uppercase tracking-wider text-[#0D0D0D] flex items-center gap-2">
@@ -147,7 +155,7 @@ export const ScanView: React.FC<ScanViewProps> = ({
               onClick={() => setIsPairwiseMode(!isPairwiseMode)}
               className="font-mono text-xs font-bold uppercase text-[#2B4BF2] hover:underline cursor-pointer text-left sm:text-right"
             >
-              {isPairwiseMode ? '[-] Single Repo Mode' : '[+] Compare Against Second Repo'}
+              {isPairwiseMode ? '[-] Switch to Single Repo' : '[+] Add Pairwise Suspect Repo'}
             </button>
           </div>
 
@@ -158,142 +166,187 @@ export const ScanView: React.FC<ScanViewProps> = ({
               onChange={(e) => setRepoUrl(e.target.value)}
               placeholder="https://github.com/owner/repository"
               disabled={isScanning}
-              className="w-full px-4 py-3.5 bg-[#F2EFE9] border-[3px] border-[#0D0D0D] text-[#0D0D0D] font-mono text-sm placeholder-[#0D0D0D]/40 focus:outline-none focus:bg-white shadow-[3px_3px_0px_#0D0D0D]"
+              className="w-full px-4 py-3 bg-[#F2EFE9] border-2 border-[#0D0D0D] text-[#0D0D0D] font-mono text-xs sm:text-sm placeholder-[#0D0D0D]/40 focus:outline-none focus:bg-white shadow-[2px_2px_0px_#0D0D0D]"
               style={{ borderRadius: '0px' }}
             />
           </div>
 
-          {/* Optional Pairwise Comparison Field */}
+          {/* Secondary input if pairwise comparison mode */}
           {isPairwiseMode && (
-            <div className="p-3 bg-[#F2EFE9] border-2 border-[#0D0D0D] space-y-2">
+            <div className="p-3 bg-[#2B4BF2]/10 border-2 border-[#2B4BF2] space-y-2">
               <label className="font-mono text-xs font-bold uppercase text-[#2B4BF2] flex items-center gap-2">
                 <CompareMark size={16} />
-                Suspect / Comparison Repository URL
+                Suspect / Comparison Repository URL (Pairwise Target)
               </label>
               <input
                 type="text"
                 value={compareRepoUrl}
                 onChange={(e) => setCompareRepoUrl(e.target.value)}
-                placeholder="https://github.com/owner/suspect-repo"
+                placeholder="https://github.com/student-forks/lab3-bst-renamed"
                 disabled={isScanning}
                 className="w-full px-3 py-2 bg-white border-2 border-[#0D0D0D] text-[#0D0D0D] font-mono text-xs focus:outline-none"
                 style={{ borderRadius: '0px' }}
               />
+              <p className="font-mono text-[10px] text-[#0D0D0D]/70">
+                Identifier-normalization pass strips comments and variable names before winnowing tokenization.
+              </p>
             </div>
           )}
 
-          {/* Error Banner */}
-          {errorMessage && (
-            <div className="p-3 bg-[#FF5A36]/10 border-2 border-[#FF5A36] text-[#0D0D0D] font-mono text-xs flex items-center justify-between">
-              <span className="font-bold">Error: {errorMessage}</span>
-              <button
-                type="button"
-                onClick={() => setErrorMessage(null)}
-                className="px-2 py-0.5 border border-[#0D0D0D] bg-white text-[10px] uppercase font-bold cursor-pointer"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {/* Primary Action Button */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
+          {/* Submit Action */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
             <span className="font-mono text-xs text-[#0D0D0D]/60 hidden sm:inline">
-              Depth-1 shallow clone & parallel scanner invocation
+              JGit depth=1 shallow clone into ephemeral worker
             </span>
 
             <button
               type="submit"
               disabled={isScanning}
-              className={`w-full sm:w-auto px-8 py-3.5 font-display font-extrabold text-sm uppercase tracking-wider border-[3px] border-[#0D0D0D] shadow-[4px_4px_0px_#0D0D0D] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_#0D0D0D] transition-all cursor-pointer ${
+              className={`w-full sm:w-auto px-8 py-3.5 font-display font-extrabold text-sm uppercase tracking-wider border-2 border-[#0D0D0D] shadow-[3px_3px_0px_#0D0D0D] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all cursor-pointer ${
                 isScanning
                   ? 'bg-[#E8E4DA] text-[#0D0D0D]/40 cursor-not-allowed'
                   : 'bg-[#D7FF3E] hover:bg-[#cbf52f] text-[#0D0D0D]'
               }`}
               style={{ borderRadius: '0px' }}
             >
-              {isScanning ? 'Auditing...' : 'Audit Repository'}
+              {isScanning ? 'Queued & Scanning...' : 'Start Audit'}
             </button>
           </div>
         </form>
-
-        {/* Real-time Progress Bar */}
-        {isScanning && (
-          <div className="mt-4 pt-4 border-t-2 border-[#0D0D0D] space-y-2">
-            <div className="flex justify-between font-mono text-xs font-bold">
-              <span>{progressMsg}</span>
-              <span>{progressPercent}%</span>
-            </div>
-            <div
-              className="w-full h-4 bg-[#F2EFE9] border-2 border-[#0D0D0D] overflow-hidden"
-              style={{ borderRadius: '0px' }}
-            >
-              <div
-                className="h-full bg-[#D7FF3E] border-r-2 border-[#0D0D0D] transition-all duration-200"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          </div>
-        )}
       </BrutalistCard>
 
-      {/* Preset Scenarios (Restrained & High Scannability) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[#0D0D0D]">
-            Demo Repositories
-          </h2>
-          <span className="font-mono text-xs text-[#0D0D0D]/60">Select to test</span>
-        </div>
+      {/* 3. Job-in-Progress View (Section 4.6 & 4.7: Live Status in Martian Mono) */}
+      {currentJob && (
+        <BrutalistCard
+          bg="white"
+          className={`p-5 sm:p-6 space-y-4 border-[3px] ${
+            currentJob.status === 'failed' ? 'border-[#FF5A36]' : 'border-[#0D0D0D]'
+          }`}
+        >
+          <div className="flex items-center justify-between pb-3 border-b-2 border-[#0D0D0D]">
+            <div>
+              <span className="font-mono text-[10px] uppercase text-[#0D0D0D]/60 block">
+                Job ID: {currentJob.id}
+              </span>
+              <h2 className="font-mono font-bold text-sm uppercase text-[#0D0D0D]">
+                {currentJob.status === 'failed' ? 'Audit Job Terminated' : currentJob.progressMessage}
+              </h2>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {PRESET_REPOSITORIES.map((preset) => {
-            const isSelected = repoUrl.toLowerCase() === preset.url.toLowerCase();
-            return (
-              <BrutalistCard
-                key={preset.id}
-                hoverable
-                onClick={() => handleSelectPreset(preset)}
-                bg={isSelected ? 'paper' : 'white'}
-                className={`p-4 ${isSelected ? 'border-[3px] border-[#0D0D0D] shadow-[4px_4px_0px_#0D0D0D]' : ''}`}
+            <span
+              className={`font-mono text-xs font-bold uppercase px-2.5 py-1 border-2 border-[#0D0D0D] ${
+                currentJob.status === 'failed'
+                  ? 'bg-[#FF5A36] text-white'
+                  : currentJob.status === 'done'
+                  ? 'bg-[#D7FF3E] text-[#0D0D0D]'
+                  : 'bg-[#2B4BF2] text-white'
+              }`}
+            >
+              {currentJob.status}
+            </span>
+          </div>
+
+          {/* Stepper Progression */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+            {[
+              { id: 'queued', label: '01 / Queued' },
+              { id: 'cloning', label: '02 / JGit Clone' },
+              { id: 'scanning', label: '03 / Dual Scanners' },
+              { id: 'aggregating', label: '04 / Report Done' },
+            ].map((st) => {
+              const state = getStepStatus(st.id as JobStatus);
+              return (
+                <div
+                  key={st.id}
+                  className={`p-2 border-2 border-[#0D0D0D] text-center font-bold ${
+                    state === 'completed'
+                      ? 'bg-[#D7FF3E] text-[#0D0D0D]'
+                      : state === 'active'
+                      ? 'bg-[#2B4BF2] text-white animate-pulse'
+                      : state === 'failed'
+                      ? 'bg-[#FF5A36] text-white'
+                      : 'bg-[#F2EFE9] text-[#0D0D0D]/40'
+                  }`}
+                >
+                  {st.label}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          <div
+            className="w-full h-3 bg-[#F2EFE9] border-2 border-[#0D0D0D] overflow-hidden"
+            style={{ borderRadius: '0px' }}
+          >
+            <div
+              className={`h-full border-r-2 border-[#0D0D0D] transition-all duration-300 ${
+                currentJob.status === 'failed' ? 'bg-[#FF5A36]' : 'bg-[#D7FF3E]'
+              }`}
+              style={{ width: `${currentJob.progressPercent}%` }}
+            />
+          </div>
+
+          {/* Specific failureReason banner per Section 4.6 & Section 8 */}
+          {currentJob.status === 'failed' && (
+            <div className="p-4 bg-[#FF5A36]/10 border-2 border-[#FF5A36] text-[#0D0D0D] space-y-2">
+              <div className="font-mono text-xs font-bold text-[#FF5A36] uppercase flex items-center gap-1.5">
+                <span>✕ Scan Failure Notice</span>
+              </div>
+              <p className="font-sans text-xs text-[#0D0D0D] leading-relaxed">
+                {currentJob.failureReason ||
+                  'The audit failed due to network unreachable repository tree or permission error.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setCurrentJob(null)}
+                className="mt-2 px-3 py-1 bg-white border border-[#0D0D0D] font-mono text-[10px] font-bold uppercase cursor-pointer"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`font-mono text-xs font-extrabold px-1.5 py-0.5 border border-[#0D0D0D] ${
-                          preset.expectedSecurityGrade === 'F'
-                            ? 'bg-[#FF5A36] text-white'
-                            : preset.expectedSecurityGrade === 'B'
-                            ? 'bg-[#2B4BF2] text-white'
-                            : 'bg-[#D7FF3E] text-[#0D0D0D]'
-                        }`}
-                        style={{ borderRadius: '0px' }}
-                      >
-                        {preset.expectedSecurityGrade}
-                      </span>
-                      <h3 className="font-mono text-xs font-bold text-[#0D0D0D] truncate">
-                        {preset.name}
-                      </h3>
-                    </div>
+                Dismiss & Retry
+              </button>
+            </div>
+          )}
+        </BrutalistCard>
+      )}
 
-                    <p className="font-sans text-xs text-[#0D0D0D]/70 mt-1 line-clamp-2">
-                      {preset.description}
-                    </p>
-                  </div>
-                </div>
+      {/* 4. Preloaded Presets Grid */}
+      <div className="space-y-3">
+        <h2 className="font-mono font-bold text-xs uppercase text-[#0D0D0D]">
+          Sample Evaluation Repositories
+        </h2>
 
-                <div className="mt-3 pt-2 border-t border-[#0D0D0D]/20 flex items-center justify-between font-mono text-[10px] text-[#0D0D0D]/70">
-                  <span className="truncate max-w-[220px]">
-                    {preset.url.replace('https://github.com/', '')}
-                  </span>
-                  <span className="font-bold text-[#0D0D0D] uppercase flex items-center gap-1">
-                    Load <ArrowRightMark size={12} />
-                  </span>
-                </div>
-              </BrutalistCard>
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {PRESET_REPOSITORIES.map((preset) => (
+            <BrutalistCard
+              key={preset.id}
+              bg="white"
+              onClick={() => handleSelectPreset(preset)}
+              className="p-4 hover:bg-[#F2EFE9] transition-colors cursor-pointer space-y-2"
+            >
+              <div className="flex items-center justify-between pb-1 border-b border-[#0D0D0D]/20">
+                <span className="font-mono font-bold text-xs text-[#0D0D0D] truncate">
+                  {preset.name}
+                </span>
+                <span
+                  className={`px-1.5 py-0.2 text-[9px] font-mono font-bold border border-[#0D0D0D] ${
+                    preset.expectedSecurityGrade === 'F'
+                      ? 'bg-[#FF5A36] text-white'
+                      : preset.expectedSecurityGrade === 'A'
+                      ? 'bg-[#D7FF3E] text-[#0D0D0D]'
+                      : 'bg-[#2B4BF2] text-white'
+                  }`}
+                >
+                  {preset.expectedSecurityGrade ? `Grade: ${preset.expectedSecurityGrade}` : `${preset.expectedPlagiarism}`}
+                </span>
+              </div>
+              <p className="font-sans text-[11px] text-[#0D0D0D]/70 line-clamp-2 leading-relaxed">
+                {preset.description}
+              </p>
+              <div className="font-mono text-[10px] text-[#2B4BF2] font-bold uppercase">
+                Load Target →
+              </div>
+            </BrutalistCard>
+          ))}
         </div>
       </div>
     </div>
