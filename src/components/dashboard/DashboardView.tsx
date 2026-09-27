@@ -23,7 +23,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToScan,
 }) => {
   const [history] = useState<AuditHistoryItem[]>(() => auditService.getHistory());
-  const [user] = useState<UserProfile>(() => auditService.getUser());
+  const [user] = useState<UserProfile | null>(() => auditService.getUser());
 
   // Group audits by repoUrl to compute trendlines
   const repoGroups: Record<string, AuditHistoryItem[]> = {};
@@ -38,8 +38,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const repoAudits = repoGroups[selectedRepo] || [];
 
   // Quota percentage
-  const quotaUsed = user.auditsCount || 14;
-  const quotaLimit = user.quotaLimit || 50;
+  const quotaUsed = user?.auditsCount || 14;
+  const quotaLimit = user?.quotaLimit || 50;
   const quotaPercent = Math.min(100, Math.round((quotaUsed / quotaLimit) * 100));
 
   return (
@@ -53,7 +53,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 WORKSPACE
               </span>
               <span className="font-mono text-xs text-[#0D0D0D]/60">
-                @{user.username}
+                @{user?.username || 'developer'}
               </span>
             </div>
             <h1 className="font-display font-extrabold text-xl sm:text-2xl text-[#0D0D0D]">

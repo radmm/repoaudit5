@@ -9,53 +9,83 @@ import { HistoryView } from './components/history/HistoryView';
 import { SettingsView } from './components/settings/SettingsView';
 import { ReviewMaterialsModal } from './components/review/ReviewMaterialsModal';
 import { GitHubAuthModal } from './components/common/GitHubAuthModal';
+import { OnboardingModal } from './components/common/OnboardingModal';
+import { PublicReportView } from './components/report/PublicReportView';
 import { auditService } from './services/auditService';
 import { AuditReport, UserProfile } from './types/audit';
-import { ShieldMark, GitHubMark, PlayMark } from './components/common/BrutalistIcon';
+import { ShieldMark, GitHubMark } from './components/common/BrutalistIcon';
 
 export default function App() {
-  // Authentication & Session
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    try {
-      const stored = localStorage.getItem('repo_auditor_user_v4');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Session & Authentication state (in-memory, verified via httpOnly cookie)
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [csrfToken, setCsrfToken] = useState<string>('');
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => Boolean(user));
-  const [activeTab, setActiveTab] = useState<TabType>(() => (user ? 'dashboard' : 'landing'));
+  const [activeTab, setActiveTab] = useState<TabType>('landing');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [reviewSection, setReviewSection] = useState<'corpus' | 'oop'>('corpus');
 
-  const [currentReport, setCurrentReport] = useState<AuditReport | null>(() => {
-    const list = auditService.getHistory();
-    return list.length > 0 ? auditService.getAuditById(list[0].id) : null;
-  });
-
+  const [currentReport, setCurrentReport] = useState<AuditReport | null>(null);
   const [targetRepoUrl, setTargetRepoUrl] = useState<string | undefined>();
   const [targetCompareUrl, setTargetCompareUrl] = useState<string | undefined>();
   const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>();
 
-  // Check server session on mount
+  // 1. Initial Route Check (/r/:auditId public badge landing page)
   useEffect(() => {
-    fetch('/api/auth/session')
+    const pathname = window.location.pathname;
+    if (pathname.startsWith('/r/')) {
+      const auditId = pathname.replace(/^\/r\//, '').split('/')[0];
+      if (auditId) {
+        // Fetch public report without authentication
+        fetch(`/api/r/${auditId}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((reportData) => {
+            if (reportData) {
+              setCurrentReport(reportData);
+              setActiveTab('public-report');
+            } else {
+              // Fallback to local history
+              const localReport = auditService.getAuditById(auditId);
+              if (localReport) {
+                setCurrentReport(localReport);
+                setActiveTab('public-report');
+              }
+            }
+          })
+          .catch(() => {
+            const localReport = auditService.getAuditById(auditId);
+            if (localReport) {
+              setCurrentReport(localReport);
+              setActiveTab('public-report');
+            }
+          });
+      }
+    }
+  }, []);
+
+  // 2. Check server session on mount via httpOnly cookie (NO localStorage auth token)
+  useEffect(() => {
+    fetch('/api/auth/session', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.authenticated && data.user) {
-          setUser(data.user);
-          setIsLoggedIn(true);
-          try {
-            localStorage.setItem('repo_auditor_user_v4', JSON.stringify(data.user));
-          } catch {}
+        if (data) {
+          if (data.csrfToken) {
+            setCsrfToken(data.csrfToken);
+          }
+          if (data.authenticated && data.user) {
+            setUser(data.user);
+            setIsLoggedIn(true);
+            auditService.setUser(data.user);
+            setActiveTab((prev) => (prev === 'landing' ? 'dashboard' : prev));
+          }
         }
       })
       .catch(() => {});
   }, []);
 
-  // Listen for OAuth postMessage callback per oauth-integration skill
+  // 3. Listen for OAuth postMessage callback from popup (oauth-integration skill)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const origin = event.origin;
@@ -63,67 +93,84 @@ export default function App() {
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data.user) {
-        handleLoginSuccess(event.data.user);
+        handleLoginSuccess(event.data.user, event.data.csrfToken);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleLoginSuccess = (authenticatedUser: UserProfile) => {
+  const handleLoginSuccess = (authenticatedUser: UserProfile, newCsrfToken?: string) => {
     setUser(authenticatedUser);
     setIsLoggedIn(true);
+    auditService.setUser(authenticatedUser);
+    if (newCsrfToken) setCsrfToken(newCsrfToken);
     setShowAuthModal(false);
-    setShowOnboarding(true);
-    try {
-      localStorage.setItem('repo_auditor_user_v4', JSON.stringify(authenticatedUser));
-    } catch {}
+    setShowOnboarding(true); // Launch Onboarding flow immediately after OAuth
     setActiveTab('dashboard');
   };
 
-  // Launch GitHub OAuth popup flow directly on click
+  // 4. Real GitHub OAuth Launch (Honest error if not configured; Popup to github.com if configured)
   const handleSignInWithGitHub = async () => {
+    setAuthError(null);
     try {
       const res = await fetch('/api/auth/url');
-      if (!res.ok) throw new Error('Failed to retrieve authorization URL');
-      const { url } = await res.json();
+      const data = await res.json().catch(() => ({}));
 
+      // If GitHub OAuth is not configured on server yet, show honest configuration modal
+      if (!res.ok || !data.configured || !data.url) {
+        setAuthError(data.message || data.error || 'GitHub OAuth is not configured yet.');
+        setShowAuthModal(true);
+        return;
+      }
+
+      // Open real GitHub OAuth page directly on github.com
       const popup = window.open(
-        url,
+        data.url,
         'github_oauth_popup',
         'width=600,height=720,scrollbars=yes,status=yes'
       );
 
       if (!popup) {
-        window.location.href = url;
+        // Fallback if browser popup blocked
+        window.location.href = data.url;
         return;
       }
 
-      // Check session periodically in case postMessage is blocked across origins
+      // Check session periodically in case postMessage cross-origin was missed
       const timer = setInterval(async () => {
         try {
           if (popup.closed) {
             clearInterval(timer);
-            const sessionRes = await fetch('/api/auth/session').then((r) => r.json());
+            const sessionRes = await fetch('/api/auth/session', { credentials: 'include' }).then((r) => r.json());
             if (sessionRes?.authenticated && sessionRes.user) {
-              handleLoginSuccess(sessionRes.user);
+              handleLoginSuccess(sessionRes.user, sessionRes.csrfToken);
             }
           }
         } catch {}
-      }, 700);
-    } catch (err) {
+      }, 800);
+    } catch (err: any) {
       console.error('OAuth launch error:', err);
+      setAuthError(err.message || 'Failed to connect to authentication server');
       setShowAuthModal(true);
     }
   };
 
+  // 5. Logout (Clears server session & httpOnly cookie, removes memory user)
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
     } catch {}
-    localStorage.removeItem('repo_auditor_user_v4');
     setUser(null);
     setIsLoggedIn(false);
+    auditService.setUser(null);
     setActiveTab('landing');
   };
 
@@ -144,8 +191,8 @@ export default function App() {
     setActiveTab('review');
   };
 
-  // Determine if we are on the public landing page (clean, zero sidebar/dev-nav)
   const isLandingView = activeTab === 'landing';
+  const isPublicReportView = activeTab === 'public-report';
 
   return (
     <div className="min-h-screen bg-[#F2EFE9] text-[#0D0D0D] flex flex-col font-sans selection:bg-[#D7FF3E] selection:text-[#0D0D0D]">
@@ -153,7 +200,12 @@ export default function App() {
       <header className="h-14 border-b-[3px] border-[#0D0D0D] bg-[#FFFFFF] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
         {/* Brand */}
         <div
-          onClick={() => setActiveTab(isLoggedIn ? 'dashboard' : 'landing')}
+          onClick={() => {
+            if (window.location.pathname.startsWith('/r/')) {
+              window.history.pushState({}, '', '/');
+            }
+            setActiveTab(isLoggedIn ? 'dashboard' : 'landing');
+          }}
           className="flex items-center gap-2.5 cursor-pointer shrink-0"
         >
           <div
@@ -168,13 +220,12 @@ export default function App() {
         </div>
 
         {/* Center Navigation depending on context */}
-        {isLandingView ? (
-          /* Public Landing Page Header Links (Problem 2) */
+        {isLandingView || isPublicReportView ? (
           <div className="hidden md:flex items-center gap-6 font-mono text-xs font-bold uppercase tracking-wider text-[#0D0D0D]">
-            <a href="#how-it-works" className="hover:text-[#2B4BF2] transition-colors">
+            <a href="/#how-it-works" className="hover:text-[#2B4BF2] transition-colors">
               How It Works
             </a>
-            <a href="#specifications" className="hover:text-[#2B4BF2] transition-colors">
+            <a href="/#specifications" className="hover:text-[#2B4BF2] transition-colors">
               Features
             </a>
             <button
@@ -185,7 +236,6 @@ export default function App() {
             </button>
           </div>
         ) : (
-          /* Authenticated Header Breadcrumb */
           <div className="hidden sm:flex items-center gap-2 font-mono text-xs text-[#0D0D0D]/60">
             <span className="text-[#0D0D0D] font-bold uppercase">{activeTab}</span>
             <span>•</span>
@@ -243,39 +293,25 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. Onboarding Banner (First run after OAuth per Section 4.6) */}
-      {showOnboarding && isLoggedIn && (
-        <div className="bg-[#D7FF3E] border-b-[3px] border-[#0D0D0D] p-3 text-center font-mono text-xs text-[#0D0D0D] flex flex-col sm:flex-row items-center justify-center gap-2">
-          <span className="font-bold">
-            ★ Welcome @{user?.username}! Auto-suggested repository:{' '}
-            <code className="bg-white px-1.5 py-0.5 border border-[#0D0D0D]">
-              octocat/Hello-World
-            </code>
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setTargetRepoUrl('https://github.com/octocat/Hello-World');
-                setShowOnboarding(false);
-                setActiveTab('scan');
-              }}
-              className="px-2.5 py-1 bg-[#0D0D0D] text-white font-bold uppercase text-[10px] cursor-pointer hover:bg-[#2B4BF2]"
-            >
-              Audit Repository
-            </button>
-            <button
-              onClick={() => setShowOnboarding(false)}
-              className="px-1.5 py-0.5 border border-[#0D0D0D] bg-white font-bold text-[10px] cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Main Workspace Container */}
-      {isLandingView ? (
-        /* CLEAN PUBLIC LANDING: ZERO SIDEBAR, ZERO DEV-NAV (Problem 2) */
+      {/* 2. Main Workspace Container */}
+      {isPublicReportView && currentReport ? (
+        /* PUBLIC BADGE REPORT VIEW (/r/:auditId - No Login Required) */
+        <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8">
+          <PublicReportView
+            report={currentReport}
+            onNavigateHome={() => {
+              window.history.pushState({}, '', '/');
+              setActiveTab('landing');
+            }}
+            onAuditOwnRepo={() => {
+              window.history.pushState({}, '', '/');
+              setTargetRepoUrl('https://github.com/acme-corp/vulnerable-payment-gateway');
+              setActiveTab('scan');
+            }}
+          />
+        </main>
+      ) : isLandingView ? (
+        /* CLEAN PUBLIC LANDING: ZERO SIDEBAR, ZERO DEV-NAV */
         <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8">
           <LandingView
             onStartAudit={handleStartAuditFromLanding}
@@ -291,9 +327,9 @@ export default function App() {
           />
         </main>
       ) : (
-        /* AUTHENTICATED APP: COLLAPSED SIDEBAR WITH 4 REAL DESTINATIONS ONLY (Problem 2) */
+        /* AUTHENTICATED APP: COLLAPSED SIDEBAR WITH 4 REAL DESTINATIONS ONLY */
         <div className="flex-1 flex overflow-hidden">
-          {/* Collapsed Icon-Only Sidebar (Expandable on hover/click) */}
+          {/* Collapsed Icon-Only Sidebar */}
           <div className="hidden md:block h-[calc(100vh-3.5rem)] sticky top-14">
             <SidebarNav
               activeTab={activeTab}
@@ -343,7 +379,10 @@ export default function App() {
             )}
 
             {activeTab === 'settings' && (
-              <SettingsView onOpenDocs={handleOpenDocs} />
+              <SettingsView
+                onOpenDocs={handleOpenDocs}
+                csrfToken={csrfToken}
+              />
             )}
 
             {activeTab === 'review' && (
@@ -358,19 +397,34 @@ export default function App() {
             )}
           </main>
 
-          {/* Mobile Bottom Navigation Bar (4 Real Destinations Only) */}
+          {/* Mobile Bottom Navigation Bar */}
           <div className="md:hidden">
             <PillBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
           </div>
         </div>
       )}
 
-      {/* GitHub OAuth Authentication Modal */}
+      {/* GitHub OAuth Authentication Modal (Honest Setup) */}
       {showAuthModal && (
         <GitHubAuthModal
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleLoginSuccess}
           redirectUri={`${window.location.origin}/auth/callback`}
+          csrfToken={csrfToken}
+          initialError={authError}
+        />
+      )}
+
+      {/* Onboarding Flow: Auto-suggested Repos for First-Time Users */}
+      {showOnboarding && user && (
+        <OnboardingModal
+          user={user}
+          onClose={() => setShowOnboarding(false)}
+          onStartAudit={(repoUrl) => {
+            setShowOnboarding(false);
+            setTargetRepoUrl(repoUrl);
+            setActiveTab('scan');
+          }}
         />
       )}
     </div>

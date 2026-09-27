@@ -14,7 +14,8 @@ export type TabType =
   | 'compare'
   | 'history'
   | 'settings'
-  | 'review';
+  | 'review'
+  | 'public-report';
 
 interface PillBottomNavProps {
   activeTab: TabType;

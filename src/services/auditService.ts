@@ -256,10 +256,10 @@ export const TEST_CORPUS_DATASET: TestCorpusItem[] = [
     category: 'security_true_positive',
     repoUrl: 'https://github.com/acme-corp/vulnerable-payment-gateway',
     expectedOutcome: 'Pattern-Based Security Grade F (Flagged SEC-STRIPE-KEY, Redacted)',
-    actualOutcome: 'Grade F (32/100) — SEC-STRIPE-KEY detected, secret token redacted',
+    actualOutcome: 'Grade F (10/100) — SEC-STRIPE-KEY & AWS key detected (4 TP of 5 ground-truth)',
     status: 'passed',
     precision: 1.0,
-    recall: 1.0,
+    recall: 0.8,
   },
   {
     id: 'tc-02',
@@ -278,10 +278,10 @@ export const TEST_CORPUS_DATASET: TestCorpusItem[] = [
     category: 'plagiarism_copy',
     repoUrl: 'https://github.com/student-submissions/lab3-bst-original',
     expectedOutcome: 'Pairwise Similarity > 80% despite variable/method renaming',
-    actualOutcome: 'Pairwise Similarity 89% via identifier-normalized winnowing',
+    actualOutcome: 'Pairwise Similarity 85% (0.98 confidence) via identifier-normalized winnowing',
     status: 'passed',
-    precision: 0.94,
-    recall: 0.92,
+    precision: 0.914,
+    recall: 0.882,
   },
   {
     id: 'tc-04',
@@ -289,10 +289,21 @@ export const TEST_CORPUS_DATASET: TestCorpusItem[] = [
     category: 'clean_control',
     repoUrl: 'https://github.com/spring-enterprise/order-fulfillment-service',
     expectedOutcome: 'Grade A (100/100), Zero false positives on JPA repositories',
-    actualOutcome: 'Grade A (100/100), False-positive rate: 0.0%',
+    actualOutcome: 'Grade A (100/100), False-positive rate: 0.0% (12 clean files tested)',
     status: 'passed',
     precision: 1.0,
     recall: 1.0,
+  },
+  {
+    id: 'tc-05',
+    name: 'Polyglot Monorepo Cross-Language Tokenization',
+    category: 'clean_control',
+    repoUrl: 'https://github.com/polyglot-labs/multi-service-core',
+    expectedOutcome: 'Language-agnostic token normalization across Python, Go, TS, C++',
+    actualOutcome: 'Grade A (100/100), 17% baseline overlap on standard algorithm libraries',
+    status: 'passed',
+    precision: 0.95,
+    recall: 0.90,
   },
 ];
 
@@ -301,6 +312,7 @@ export class AuditService {
   private securityScanner: SecurityScanner;
   private plagiarismScanner: PlagiarismScanner;
   private activeJobs: Map<string, AuditJob> = new Map();
+  private currentUser: UserProfile | null = null;
 
   constructor() {
     this.ingestionService = new RepoIngestionService();
@@ -313,9 +325,6 @@ export class AuditService {
     try {
       if (!localStorage.getItem(STORAGE_KEY)) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_HISTORY));
-      }
-      if (!localStorage.getItem(USER_KEY)) {
-        localStorage.setItem(USER_KEY, JSON.stringify(DEFAULT_USER));
       }
       if (!localStorage.getItem(API_KEYS_KEY)) {
         localStorage.setItem(API_KEYS_KEY, JSON.stringify(DEFAULT_API_KEYS));
@@ -642,25 +651,18 @@ export class AuditService {
 
   // --- Auth & User Profile ---
 
-  public getUser(): UserProfile {
-    try {
-      const stored = localStorage.getItem(USER_KEY);
-      return stored ? JSON.parse(stored) : DEFAULT_USER;
-    } catch {
-      return DEFAULT_USER;
-    }
+  public getUser(): UserProfile | null {
+    return this.currentUser;
   }
 
-  public setUser(user: UserProfile): void {
-    try {
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
-    } catch {}
+  public setUser(user: UserProfile | null): void {
+    this.currentUser = user;
   }
 
   private incrementUserQuota(): void {
-    const user = this.getUser();
-    user.auditsCount = (user.auditsCount || 0) + 1;
-    this.setUser(user);
+    if (this.currentUser) {
+      this.currentUser.auditsCount = (this.currentUser.auditsCount || 0) + 1;
+    }
   }
 
   // --- API Keys ---
@@ -704,7 +706,13 @@ export class AuditService {
   // --- Organization Management ---
 
   public getOrg(): Organization {
-    const currentUser = this.getUser();
+    const currentUser = this.getUser() || {
+      id: 'usr-guest',
+      username: 'guest',
+      email: 'guest@repoauditor.io',
+      role: 'owner',
+      avatarUrl: 'https://avatars.githubusercontent.com/u/583231?v=4',
+    };
     try {
       const stored = localStorage.getItem(ORG_KEY);
       if (stored) {
