@@ -1,4 +1,4 @@
-# Repo Auditor — Automated Security & Plagiarism Analysis Engine (v2)
+# Repo Auditor - Automated Security & Plagiarism Analysis Engine (v2)
 
 Repo Auditor is a full-stack code inspection engine that takes a public GitHub repository URL and concurrently computes:
 1. **Security Vulnerability Grade (A–F)** via static regex checks on hardcoded secrets, SQL injection string concatenation, weak hashing (MD5/SHA1), and unsafe execution.
